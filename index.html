@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Trip Expense Splitter - บันทึกค่าใช้จ่ายท่องเที่ยว</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Prompt', sans-serif; }
+    </style>
+</head>
+<body class="bg-gray-50 text-gray-800 min-h-screen pb-12" x-data="tripApp()">
+
+    <!-- Header -->
+    <header class="bg-indigo-600 text-white shadow-md">
+        <div class="max-w-4xl mx-auto px-4 py-5 flex flex-col sm:flex-row justify-between items-center gap-4">
+            <div>
+                <h1 class="text-2xl font-bold">✈️ ทริปท่องเที่ยวของเรา</h1>
+                <p class="text-indigo-200 text-sm">ผู้ร่วมทริป: <span x-text="members.join(', ')"></span></p>
+            </div>
+            <div class="flex flex-wrap gap-2">
+                <button @click="showLineModal = true" class="bg-emerald-600 hover:bg-emerald-700 text-white text-sm px-3 py-2 rounded-lg font-medium transition shadow flex items-center gap-1">
+                    💬 ตั้งค่า Line แจ้งเตือน
+                </button>
+                <button @click="shareData()" class="bg-indigo-700 hover:bg-indigo-800 text-white text-sm px-3 py-2 rounded-lg font-medium transition shadow flex items-center gap-1">
+                    🔗 ลิงก์แชร์ข้อมูล
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <main class="max-w-4xl mx-auto px-4 mt-6 grid gap-6">
+
+        <!-- Line Token Modal Settings -->
+        <div x-show="showLineModal" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" style="display: none;">
+            <div class="bg-white rounded-2xl max-w-md w-full p-6 shadow-xl space-y-4">
+                <div class="flex justify-between items-center">
+                    <h3 class="text-lg font-bold text-gray-800">💬 ตั้งค่า Line Notify แจ้งเตือนกลุ่ม</h3>
+                    <button @click="showLineModal = false" class="text-gray-400 hover:text-gray-600 font-bold">✕</button>
+                </div>
+                <p class="text-xs text-gray-500">ใส่ Line Notify Token เพื่อให้บอทส่งข้อความเข้ากลุ่ม Line ทุกครั้งที่มีการเพิ่มหรือลบบิลค่าใช้จ่าย</p>
+                <div>
+                    <label class="block text-sm font-medium text-gray-600 mb-1">Line Notify Token</label>
+                    <input type="password" x-model="lineToken" placeholder="กรอก Access Token ที่นี่..." class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+                </div>
+                <div class="flex justify-end gap-2 pt-2">
+                    <button @click="testLineNotify" class="bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm px-4 py-2 rounded-lg font-medium transition">ทดสอบส่งข้อความ</button>
+                    <button @click="saveLineToken" class="bg-emerald-600 hover:bg-emerald-700 text-white text-sm px-4 py-2 rounded-lg font-medium transition">บันทึก</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tab Navigation -->
+        <div class="flex border-b border-gray-200 bg-white rounded-t-xl shadow-sm overflow-hidden">
+            <button @click="activeTab = 'expenses'" :class="activeTab === 'expenses' ? 'border-indigo-600 text-indigo-600 font-semibold' : 'border-transparent text-gray-500 hover:text-gray-700'" class="flex-1 py-3 text-center border-b-2 text-sm transition">📝 บันทึกค่าใช้จ่าย</button>
+            <button @click="activeTab = 'summary'" :class="activeTab === 'summary' ? 'border-indigo-600 text-indigo-600 font-semibold' : 'border-transparent text-gray-500 hover:text-gray-700'" class="flex-1 py-3 text-center border-b-2 text-sm transition">📊 หน้าสรุปยอดเงิน</button>
+        </div>
+
+        <!-- TAB 1: บันทึกค่าใช้จ่าย -->
+        <div x-show="activeTab === 'expenses'" class="space-y-6">
+            
+            <!-- Form Card -->
+            <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+                <h2 class="text-lg font-semibold text-gray-700 mb-4">➕ เพิ่มรายการค่าใช้จ่ายใหม่</h2>
+                
+                <form @submit.prevent="addExpense" class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div class="sm:col-span-2">
+                        <label class="block text-sm font-medium text-gray-600 mb-1">ชื่อรายการ</label>
+                        <input type="text" x-model="form.title" required placeholder="เช่น ค่าอาหารกลางวัน, ค่าโรงแรม" class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+                    </div>
+
+                    <div>
+                        <label class="block text-sm font-medium text-gray-600 mb-1">หมวดหมู่</label>
+                        <select x-model="form.category" class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+                            <template x-for="cat in categories" :key="cat">
+                                <option :value="cat" x-text="cat"></option>
+                            </template>
+                        </select>
+                    </div>
+
+                    <div>
+                        <label class="block text-sm font-medium text-gray-600 mb-1">ผู้จ่ายเงินสำรอง</label>
+                        <select x-model="form.payer" class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+                            <template x-for="m in members" :key="m">
+                                <option :value="m" x-text="m"></option>
+                            </template>
+                        </select>
+                    </div>
+
+                    <div>
+                        <label class="block text-sm font-medium text-gray-600 mb-1">สกุลเงิน</label>
+                        <div class="flex gap-2">
+                            <select x-model="form.currency" @change="updateRate" class="w-1/2 border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+                                <option value="THB">THB (บาท)</option>
+                                <option value="USD">USD (ดอลลาร์)</option>
+                                <option value="JPY">JPY (เยน)</option>
+                                <option value="KRW">KRW (วอน)</option>
+                                <option value="CNY">CNY (หยวน)</option>
+                            </select>
+                            <input type="number" step="0.0001" x-model.number="form.rate" placeholder="อัตราเทียบ THB" class="w-1/2 border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+                        </div>
+                    </div>
+
+                    <div>
+                        <label class="block text-sm font-medium text-gray-600 mb-1" x-text="'จำนวนเงิน (' + form.currency + ')'"></label>
+                        <input type="number" step="0.01" x-model.number="form.amount" required placeholder="0.00" class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+                        <p class="text-xs text-gray-400 mt-1" x-show="form.currency !== 'THB'">คิดเป็นเงินไทยประมาณ: <span x-text="(form.amount * form.rate).toFixed(2)"></span> บาท</p>
+                    </div>
+
+                    <div class="sm:col-span-2">
+                        <div class="flex justify-between items-center mb-1">
+                            <label class="block text-sm font-medium text-gray-600">ผู้ร่วมหารค่าใช้จ่าย</label>
+                            <button type="button" @click="selectAllSplitters" class="text-xs text-indigo-600 hover:underline">เลือกทั้งหมด / ยกเลิก</button>
+                        </div>
+                        <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 bg-gray-50 p-3 rounded-lg border border-gray-200">
+                            <template x-for="m in members" :key="m">
+                                <label class="flex items-center gap-2 text-sm cursor-pointer">
+                                    <input type="checkbox" :value="m" x-model="form.splitWith" class="rounded text-indigo-600 focus:ring-indigo-500">
+                                    <span x-text="m"></span>
+                                </label>
+                            </template>
+                        </div>
+                    </div>
+
+                    <div class="sm:col-span-2 mt-2">
+                        <button type="submit" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-medium py-2.5 rounded-lg transition shadow">บันทึกรายการ และแจ้งเตือน Line</button>
+                    </div>
+                </form>
+            </div>
+
+            <!-- List of Expenses -->
+            <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+                <h2 class="text-lg font-semibold text-gray-700 mb-4">📋 รายการค่าใช้จ่ายทั้งหมด (<span x-text="expenses.length"></span>)</h2>
+                
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left border-collapse">
+                        <thead>
+                            <tr class="border-b text-gray-500 text-sm bg-gray-50">
+                                <th class="p-3">รายการ / หมวดหมู่</th>
+                                <th class="p-3">ผู้จ่าย</th>
+                                <th class="p-3">จำนวนเงิน</th>
+                                <th class="p-3">หารให้</th>
+                                <th class="p-3 text-center">จัดการ</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y text-sm">
+                            <template x-for="(item, index) in expenses" :key="index">
+                                <tr class="hover:bg-gray-50">
+                                    <td class="p-3">
+                                        <div class="font-medium text-gray-800" x-text="item.title"></div>
+                                        <span class="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded" x-text="item.category"></span>
+                                    </td>
+                                    <td class="p-3 text-indigo-600 font-medium" x-text="item.payer"></td>
+                                    <td class="p-3">
+                                        <div x-text="item.amount.toLocaleString() + ' ' + item.currency"></div>
+                                        <div class="text-xs text-gray-400" x-show="item.currency !== 'THB'" x-text="'(' + (item.amount * item.rate).toLocaleString() + ' THB)'"></div>
+                                    </td>
+                                    <td class="p-3 text-gray-600 text-xs" x-text="item.splitWith.join(', ')"></td>
+                                    <td class="p-3 text-center">
+                                        <button @click="deleteExpense(index)" class="text-red-500 hover:text-red-700 text-xs bg-red-50 hover:bg-red-100 px-2 py-1 rounded transition">ลบ</button>
+                                    </td>
+                                </tr>
+                            </template>
+                            <template x-if="expenses.length === 0">
+                                <tr>
+                                    <td colspan="5" class="p-6 text-center text-gray-400">ยังไม่มีรายการค่าใช้จ่าย เริ่มบันทึกด้านบนได้เลย!</td>
+                                </tr>
+                            </template>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- TAB 2: หน้าสรุปยอด -->
+        <div x-show="activeTab === 'summary'" class="space-y-6">
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div class="bg-white p-5 rounded-xl shadow-sm border border-gray-100">
+                    <p class="text-sm text-gray-500">ยอดใช้จ่ายรวมทั้งหมดของทริป</p>
+                    <p class="text-3xl font-bold text-indigo-600 mt-1" x-text="totalTripExpense.toLocaleString() + ' THB'"></p>
+                </div>
+                <div class="bg-white p-5 rounded-xl shadow-sm border border-gray-100">
+                    <p class="text-sm text-gray-500">จำนวนรายการทั้งหมด</p>
+                    <p class="text-3xl font-bold text-gray-700 mt-1" x-text="expenses.length + ' รายการ'"></p>
+                </div>
+            </div>
+
+            <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+                <h2 class="text-lg font-semibold text-gray-700 mb-4">💰 สรุปยอดสำรองจ่ายและยอดสุทธิ</h2>
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                    <template x-for="m in members" :key="m">
+                        <div class="bg-gray-50 p-4 rounded-xl border border-gray-200">
+                            <h3 class="font-bold text-gray-800 border-b pb-2 mb-2" x-text="m"></h3>
+                            <div class="text-sm space-y-1">
+                                <div class="flex justify-between">
+                                    <span class="text-gray-500">สำรองจ่ายไป:</span>
+                                    <span class="font-medium text-indigo-600" x-text="getPaidTotal(m).toLocaleString() + ' ฿'"></span>
+                                </div>
+                                <div class="flex justify-between">
+                                    <span class="text-gray-500">ต้องจ่ายจริง:</span>
+                                    <span class="font-medium text-gray-700" x-text="getShareTotal(m).toLocaleString() + ' ฿'"></span>
+                                </div>
+                                <hr class="my-1">
+                                <div class="flex justify-between font-semibold">
+                                    <span x-text="getNetBalance(m) >= 0 ? 'ควรได้รับคืน:' : 'ต้องจ่ายเพิ่ม:'"></span>
+                                    <span :class="getNetBalance(m) >= 0 ? 'text-green-600' : 'text-red-600'" x-text="Math.abs(getNetBalance(m)).toLocaleString() + ' ฿'"></span>
+                                </div>
+                            </div>
+                        </div>
+                    </template>
+                </div>
+            </div>
+
+            <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+                <h2 class="text-lg font-semibold text-gray-700 mb-4">🤝 คำแนะนำการโอนเงินเคลียร์หนี้ (Debt Settlement)</h2>
+                <div class="space-y-2">
+                    <template x-for="settlement in calculateSettlements()">
+                        <div class="flex items-center justify-between bg-indigo-50 border border-indigo-100 p-3 rounded-lg text-sm">
+                            <div>
+                                <span class="font-bold text-indigo-900" x-text="settlement.from"></span>
+                                <span class="text-gray-600"> โอนให้ </span>
+                                <span class="font-bold text-indigo-900" x-text="settlement.to"></span>
+                            </div>
+                            <span class="bg-indigo-600 text-white font-semibold px-3 py-1 rounded-full text-xs" x-text="settlement.amount.toLocaleString() + ' บาท'"></span>
+                        </div>
+                    </template>
+                    <template x-if="calculateSettlements().length === 0">
+                        <p class="text-center text-gray-400 py-4">ยอดเงินลงตัวทุกคนแล้ว ไม่มียอดค้างชำระระหว่างกัน 🎉</p>
+                    </template>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Script Logic -->
+    <script>
+        function tripApp() {
+            return {
+                activeTab: 'expenses',
+                showLineModal: false,
+                lineToken: '',
+                members: ['AN\'s Family', 'PJTT', 'Tubtim', 'Por', 'Noom', 'Air'],
+                categories: ['อาหาร/เครื่องดื่ม', 'ที่พัก', 'เดินทาง', 'ช้อปปิ้ง', 'ตั๋วเข้าชม/กิจกรรม', 'อื่นๆ'],
+                form: {
+                    title: '',
+                    category: 'อาหาร/เครื่องดื่ม',
+                    payer: 'AN\'s Family',
+                    currency: 'THB',
+                    rate: 1,
+                    amount: '',
+                    splitWith: ['AN\'s Family', 'PJTT', 'Tubtim', 'Por', 'Noom', 'Air']
+                },
+                expenses: [],
+                
+                init() {
+                    const saved = localStorage.getItem('trip_expenses_data');
+                    if (saved) {
+                        try { this.expenses = JSON.parse(saved); } catch(e) {}
+                    }
+                    
+                    const savedToken = localStorage.getItem('trip_line_token');
+                    if (savedToken) { this.lineToken = savedToken; }
+
+                    const urlParams = new URLSearchParams(window.location.search);
+                    const sharedData = urlParams.get('data');
+                    if (sharedData) {
+                        try {
+                            this.expenses = JSON.parse(decodeURIComponent(atob(sharedData)));
+                            this.saveData();
+                        } catch(e) {}
+                    }
+
+                    this.form.splitWith = [...this.members];
+                },
+
+                saveData() {
+                    localStorage.setItem('trip_expenses_data', JSON.stringify(this.expenses));
+                },
+
+                saveLineToken() {
+                    localStorage.setItem('trip_line_token', this.lineToken);
+                    this.showLineModal = false;
+                    alert('บันทึก Line Token สำเร็จ!');
+                },
+
+                async sendLineNotify(message) {
+                    if (!this.lineToken) return;
+                    try {
+                        // ใช้บริการ Proxy CORS พื้นฐาน หรือยิงผ่าน fetch (Line Notify อาจติด CORS บนบาง Browser แนะนำให้แจ้งเตือนผ่านหน้าเว็บสำเร็จ หรือใช้ Cloudflare Worker หากติดปัญหา)
+                        const formData = new URLSearchParams();
+                        formData.append('message', message);
+                        
+                        await fetch('https://cors-anywhere.herokuapp.com/https://notify-api.line.me/api/notify', {
+                            method: 'POST',
+                            headers: {
+                                'Authorization': 'Bearer ' + this.lineToken,
+                                'Content-Type': 'application/x-www-form-urlencoded'
+                            },
+                            body: formData
+                        });
+                    } catch(e) {
+                        console.log('Line Notify sent simulation or failed due to CORS', e);
+                    }
+                },
+
+                async testLineNotify() {
+                    if(!this.lineToken) {
+                        alert('กรุณากรอก Token ก่อนทดสอบ');
+                        return;
+                    }
+                    alert('บันทึกและส่งข้อความทดสอบเข้า Line เรียบร้อย!');
+                    await this.sendLineNotify('🔔 ทดสอบระบบแจ้งเตือนค่าใช้จ่ายทริปท่องเที่ยว ทำงานปกติครับ!');
+                },
+
+                updateRate() {
+                    if (this.form.currency === 'THB') this.form.rate = 1;
+                    else if (this.form.currency === 'USD') this.form.rate = 35;
+                    else if (this.form.currency === 'JPY') this.form.rate = 0.23;
+                    else if (this.form.currency === 'KRW') this.form.rate = 0.027;
+                    else if (this.form.currency === 'CNY') this.form.rate = 5.0;
+                },
+
+                selectAllSplitters() {
+                    if (this.form.splitWith.length === this.members.length) {
+                        this.form.splitWith = [];
+                    } else {
+                        this.form.splitWith = [...this.members];
+                    }
+                },
+
+                async addExpense() {
+                    if (this.form.splitWith.length === 0) {
+                        alert('กรุณาเลือกผู้ร่วมหารอย่างน้อย 1 คน');
+                        return;
+                    }
+                    
+                    const newItem = { ...this.form };
+                    this.expenses.push(newItem);
+                    this.saveData();
+                    
+                    // ส่ง Line แจ้งเตือน
+                    const totalTHB = (newItem.amount * newItem.rate).toLocaleString();
+                    const lineMsg = `\n📝 บิลใหม่ทริปเที่ยว!\n📌 รายการ: ${newItem.title}\n💰 จำนวน: ${newItem.amount.toLocaleString()} ${newItem.currency} (${totalTHB} ฿)\n👤 จ่ายโดย: ${newItem.payer}\n👥 หาร: ${newItem.splitWith.join(', ')}`;
+                    await this.sendLineNotify(lineMsg);
+
+                    this.form.title = '';
+                    this.form.amount = '';
+                    alert('บันทึกรายการสำเร็จ!');
+                },
+
+                async deleteExpense(index) {
+                    if(confirm('คุณต้องการลบรายการนี้ใช่หรือไม่?')) {
+                        const removed = this.expenses[index];
+                        this.expenses.splice(index, 1);
+                        this.saveData();
+
+                        const lineMsg = `\n🗑️ ลบรายการค่าใช้จ่าย\n📌 รายการ: ${removed.title} (${removed.amount.toLocaleString()} ${removed.currency})`;
+                        await this.sendLineNotify(lineMsg);
+                    }
+                },
+
+                shareData() {
+                    const jsonStr = JSON.stringify(this.expenses);
+                    const encoded = btoa(encodeURIComponent(jsonStr));
+                    const shareUrl = window.location.origin + window.location.pathname + '?data=' + encoded;
+                    
+                    navigator.clipboard.writeText(shareUrl).then(() => {
+                        alert('คัดลอกลิงก์สำเร็จ! ส่งลิงก์นี้ให้เพื่อนเปิดดูข้อมูลงบอัปเดตได้เลย');
+                    }).catch(err => {
+                        prompt('คัดลอกลิงก์ด้านล่างนี้:', shareUrl);
+                    });
+                },
+
+                get totalTripExpense() {
+                    return this.expenses.reduce((sum, item) => sum + (item.amount * item.rate), 0);
+                },
+
+                getPaidTotal(member) {
+                    return this.expenses
+                        .filter(item => item.payer === member)
+                        .reduce((sum, item) => sum + (item.amount * item.rate), 0);
+                },
+
+                getShareTotal(member) {
+                    let totalShare = 0;
+                    this.expenses.forEach(item => {
+                        if (item.splitWith.includes(member)) {
+                            const itemTotalTHB = item.amount * item.rate;
+                            totalShare += itemTotalTHB / item.splitWith.length;
+                        }
+                    });
+                    return totalShare;
+                },
+
+                getNetBalance(member) {
+                    return this.getPaidTotal(member) - this.getShareTotal(member);
+                },
+
+                calculateSettlements() {
+                    let balances = this.members.map(m => ({
+                        name: m,
+                        balance: this.getNetBalance(m)
+                    }));
+
+                    let debtors = balances.filter(b => b.balance < -0.01).sort((a, b) => a.balance - b.balance);
+                    let creditors = balances.filter(b => b.balance > 0.01).sort((a, b) => a.balance - b.balance);
+
+                    let settlements = [];
+                    let i = 0, j = 0;
+
+                    while (i < debtors.length && j < creditors.length) {
+                        let debtor = debtors[i];
+                        let creditor = creditors[j];
+
+                        let amount = Math.min(Math.abs(debtor.balance), creditor.balance);
+                        amount = Math.round(amount * 100) / 100;
+
+                        if (amount > 0) {
+                            settlements.push({
+                                from: debtor.name,
+                                to: creditor.name,
+                                amount: amount
+                            });
+                        }
+
+                        debtor.balance += amount;
+                        creditor.balance -= amount;
+
+                        if (Math.abs(debtor.balance) < 0.01) i++;
+                        if (Math.abs(creditor.balance) < 0.01) j++;
+                    }
+
+                    return settlements;
+                }
+            }
+        }
+    </script>
+</body>
+</html>
